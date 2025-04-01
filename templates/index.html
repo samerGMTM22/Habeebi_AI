@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Habeebi Voice Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Habeebi</h1>
+    <div id="status">Ready. Press and hold the button to speak.</div>
+
+    <button id="recordButton">Hold to Speak</button>
+
+    <div>
+        <label for="voiceSelect">Agent Voice:</label>
+        <select id="voiceSelect">
+            <option value="alloy" selected>Alloy</option>
+            <option value="ash">Ash</option>
+            <option value="coral">Coral</option>
+            <option value="echo">Echo</option>
+            <option value="fable">Fable</option>
+            <option value="onyx">Onyx</option>
+            <option value="nova">Nova</option>
+            <option value="sage">Sage</option>
+            <option value="shimmer">Shimmer</option>
+        </select>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

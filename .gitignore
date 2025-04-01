@@ -1,0 +1,26 @@
+# Virtual Environment
+.venv/
+venv/
+*.venv
+
+# Environment variables
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE files (Optional, examples for VS Code, PyCharm)
+.vscode/
+.idea/
+
+# OS files (Optional, examples for macOS, Windows)
+.DS_Store
+Thumbs.db
