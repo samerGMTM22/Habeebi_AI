@@ -3,6 +3,7 @@ const recordButton = document.getElementById('recordButton');
 const voiceSelect = document.getElementById('voiceSelect');
 const statusDiv = document.getElementById('status');
 const refreshButton = document.getElementById('refreshButton');
+const stopButton = document.getElementById('stopButton'); // Get reference to Stop Button
 const visualizerCanvas = document.getElementById('visualizer');
 const canvasCtx = visualizerCanvas.getContext('2d');
 
@@ -12,10 +13,11 @@ let localAudioChunks = [];
 let ws;
 let audioContext;
 let audioQueue = [];
+let currentAudioSource = null; // Keep track of the currently playing source node
 let isPlaying = false;
 let nextStartTime = 0;
 let analyser;
-let sourceNode;
+let sourceNode; // For connecting analyser during recording
 let micStream;
 let isReady = false;
 
@@ -30,6 +32,7 @@ function initialize() {
     setupAudioPlayback();
     setupEventListeners();
     setupVisualizer();
+    // Stop button is now always visible due to CSS change
 }
 
 // === WebSocket Setup ===
@@ -98,6 +101,7 @@ function handleServerMessage(message) {
                 isReady = true;
                 recordButton.disabled = false;
                 refreshButton.disabled = false;
+                // No longer hiding stop button here - it's always visible
             }
             break;
         case 'error':
@@ -106,6 +110,7 @@ function handleServerMessage(message) {
             isPlaying = false;
             audioQueue = [];
             nextStartTime = 0;
+            // No longer hiding stop button here - it's always visible
             recordButton.disabled = !isReady;
             refreshButton.disabled = !isReady;
             break;
@@ -169,80 +174,115 @@ async function playAudioQueue() {
     // Ensure AudioContext is ready before proceeding.
     if (!await ensureAudioContext()) return;
 
-    // If the queue is empty OR playback is already in progress, exit.
-    // The `onended` handler of the currently playing chunk will call this again.
+    // Only proceed if the queue has items and we are not already playing.
     if (audioQueue.length === 0 || isPlaying) {
         if (audioQueue.length === 0 && !isPlaying) {
-             console.log("Playback queue empty and not currently playing.");
+            console.log("playAudioQueue: Queue is empty, ensuring UI is reset.");
+            statusDiv.textContent = 'Ready. Hold button to speak.';
+            // No longer hiding stop button here - it's always visible
+            if (isReady) { // Re-enable buttons if agent is ready
+                 recordButton.disabled = false;
+                 refreshButton.disabled = false;
+            }
+            nextStartTime = 0;
         }
-        return;
+        return; // Exit if queue empty or already playing
     }
 
-    // Set the flag *before* processing the chunk to prevent race conditions.
-    isPlaying = true;
+    // --- Start playing the next chunk ---
+    isPlaying = true; // Set playing flag
+    // No longer showing stop button here - it's always visible
+    recordButton.disabled = true; // Disable other buttons during playback
+    refreshButton.disabled = true;
     statusDiv.textContent = 'Assistant speaking...';
-
-    // Get the next chunk (ArrayBuffer) from the queue.
-    const audioChunkArrayBuffer = audioQueue.shift();
+    const audioChunkArrayBuffer = audioQueue.shift(); // Get the next chunk
 
     try {
         // --- Decode and Prepare Buffer ---
-        // Verify data integrity (byte length must be even for Int16).
         if (audioChunkArrayBuffer.byteLength % 2 !== 0) {
             console.error("Received audio data with odd byte length, cannot process as Int16.");
             isPlaying = false; // Reset flag
             playAudioQueue(); // Try next chunk immediately
             return;
         }
-        // Convert raw bytes to Float32 data for Web Audio API.
         const pcm16Data = new Int16Array(audioChunkArrayBuffer);
         const pcm32Data = new Float32Array(pcm16Data.length);
         for (let i = 0; i < pcm16Data.length; i++) {
-            pcm32Data[i] = pcm16Data[i] / 32768.0; // Normalize Int16 to [-1.0, 1.0]
+            pcm32Data[i] = pcm16Data[i] / 32768.0;
         }
-        // Create an AudioBuffer.
         const audioBuffer = audioContext.createBuffer(1, pcm32Data.length, audioContext.sampleRate);
         audioBuffer.copyToChannel(pcm32Data, 0);
 
         // --- Schedule Playback ---
-        // Create a source node for this buffer.
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination); // Connect to speakers.
-
-        // Calculate precise start time for gapless playback.
+        currentAudioSource = audioContext.createBufferSource(); // Store reference
+        currentAudioSource.buffer = audioBuffer;
+        currentAudioSource.connect(audioContext.destination);
         const currentTime = audioContext.currentTime;
-        const startTime = Math.max(currentTime, nextStartTime); // Start now or after previous chunk.
-
-        // Schedule playback.
-        source.start(startTime);
-        // Update the start time for the *next* chunk.
+        const startTime = Math.max(currentTime, nextStartTime);
+        currentAudioSource.start(startTime);
         nextStartTime = startTime + audioBuffer.duration;
 
         // --- Handle Chunk End ---
-        // This function is called when *this specific chunk* finishes playing.
-        source.onended = () => {
-            // Important: Reset the isPlaying flag *before* calling playAudioQueue again.
-            // This allows the next call to proceed if there are more chunks.
-            isPlaying = false;
-            // Check if more chunks are available and trigger the next playback.
-            if (audioQueue.length > 0) {
-                playAudioQueue();
-            } else {
-                // This was the last chunk, and the queue is now empty.
-                console.log("Finished playing last audio chunk.");
-                statusDiv.textContent = 'Ready. Hold button to speak.';
-                nextStartTime = 0; // Reset scheduling time.
-            }
+        currentAudioSource.onended = () => {
+            currentAudioSource = null; // Clear reference
+            // This chunk finished playing.
+            currentAudioSource = null; // Clear reference
+            isPlaying = false; // Allow next chunk to be processed
+            // Immediately attempt to play the next chunk.
+            // The check at the start of playAudioQueue will handle the empty queue case.
+            playAudioQueue();
         };
 
     } catch (error) {
-        // Handle errors during audio processing/playback.
         console.error("Error decoding or playing audio chunk:", error);
-        audioQueue = []; // Clear the queue on error.
+        audioQueue = []; // Clear queue on error
         isPlaying = false;
         nextStartTime = 0;
+        // No longer hiding stop button here - it's always visible
+        if (isReady) { // Only re-enable if agent is ready
+             recordButton.disabled = false;
+             refreshButton.disabled = false;
+        }
         statusDiv.textContent = `Error playing audio: ${error.message}`;
+    }
+}
+
+// Function to stop audio playback and signal agent stop
+function stopAgentAndPlayback() {
+    console.log("Stopping playback and signaling agent stop...");
+
+    // 1. Stop local audio playback
+    audioQueue = []; // Clear the queue of pending chunks
+    if (currentAudioSource) {
+        currentAudioSource.onended = null; // Prevent the onended callback from firing
+        try {
+            currentAudioSource.stop(); // Stop the currently playing buffer source
+        } catch (e) {
+            console.warn("Error stopping audio source (might have already stopped):", e);
+        }
+        currentAudioSource = null;
+    }
+    isPlaying = false;
+    nextStartTime = 0;
+
+    // 2. Send stop signal to backend via WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log("Sending stop_agent command to backend.");
+        ws.send(JSON.stringify({ command: 'stop_agent' }));
+    } else {
+        console.warn("WebSocket not open, cannot send stop_agent command.");
+    }
+
+    // 3. Update UI
+    // No longer hiding stop button here - it's always visible
+    statusDiv.textContent = 'Agent stop requested. Ready.';
+    if (isReady) { // Only re-enable if agent is ready
+        recordButton.disabled = false;
+        refreshButton.disabled = false;
+    } else {
+        // If agent wasn't ready, keep buttons disabled
+        recordButton.disabled = true;
+        refreshButton.disabled = true;
     }
 }
 
@@ -295,6 +335,7 @@ async function startRecording() {
             console.log(`Sending audio (${arrayBuffer.byteLength} bytes) via WebSocket...`);
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(arrayBuffer);
+                // No longer showing stop button here - it's always visible
             } else {
                  console.error("WebSocket closed before sending audio.");
                  statusDiv.textContent = "Connection lost before sending.";
@@ -329,6 +370,9 @@ function setupEventListeners() {
     recordButton.addEventListener('mousedown', startRecording);
     recordButton.addEventListener('mouseup', stopRecording);
     recordButton.addEventListener('mouseleave', stopRecording);
+
+    // Add event listener for the stop button
+    stopButton.addEventListener('click', stopAgentAndPlayback); // Updated function call
 
     refreshButton.addEventListener('click', () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -375,40 +419,69 @@ function disconnectVisualizer() {
      canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
 }
 
-let visualizerDrawing = false;
-function drawVisualizer() {
-    if (!analyser || visualizerDrawing) return;
-    visualizerDrawing = true;
+let visualizerDrawing = false; // Flag to prevent multiple animation frame loops
 
-    const bufferLength = analyser.frequencyBinCount;
+// Draws frequency bars visualization
+function drawVisualizer() {
+    // Ensure analyser exists and the loop isn't already running.
+    if (!analyser || visualizerDrawing) return;
+    visualizerDrawing = true; // Set flag to indicate loop is active.
+
+    // Get the analyser's configuration.
+    // analyser.fftSize = 256; // Smaller FFT size for fewer, wider bars (optional)
+    const bufferLength = analyser.frequencyBinCount; // Number of data points (half of fftSize).
+    // Create an array to hold the frequency data.
     const dataArray = new Uint8Array(bufferLength);
 
+    // --- Animation Loop ---
     function draw() {
+        // Stop the loop if the source node has been disconnected.
         if (!sourceNode) {
-             visualizerDrawing = false;
+             visualizerDrawing = false; // Reset flag.
+             // Clear canvas one last time
+             canvasCtx.fillStyle = 'rgb(42, 42, 42)'; // Match canvas background
+             canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
              return;
         }
+        // Request the next frame for animation.
         requestAnimationFrame(draw);
-        analyser.getByteTimeDomainData(dataArray);
-        canvasCtx.fillStyle = 'rgb(240, 240, 240)';
+
+        // Get the current frequency data from the analyser.
+        analyser.getByteFrequencyData(dataArray);
+
+        // --- Drawing on Canvas ---
+        // Clear the canvas with the background color.
+        canvasCtx.fillStyle = '#2a2a2a'; // Match canvas background from CSS
         canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-        canvasCtx.lineWidth = 2;
-        canvasCtx.strokeStyle = 'rgb(0, 123, 255)';
-        canvasCtx.beginPath();
-        const sliceWidth = visualizerCanvas.width * 1.0 / bufferLength;
-        let x = 0;
+
+        const barWidth = (visualizerCanvas.width / bufferLength) * 1.5; // Width of each bar (adjust multiplier for spacing)
+        let barHeight;
+        let x = 0; // Current horizontal position.
+
+        // Iterate through the frequency data points.
         for (let i = 0; i < bufferLength; i++) {
-            const v = dataArray[i] / 128.0;
-            const y = v * visualizerCanvas.height / 2;
-            if (i === 0) canvasCtx.moveTo(x, y);
-            else canvasCtx.lineTo(x, y);
-            x += sliceWidth;
+            // Scale the data point (0-255) to the canvas height.
+            barHeight = dataArray[i] * (visualizerCanvas.height / 255); // Scale to canvas height
+
+            // Set the color for the bars (e.g., a blue gradient based on height)
+            const blueIntensity = Math.min(255, barHeight * 2); // More intense blue for taller bars
+            canvasCtx.fillStyle = `rgb(0, ${150 + blueIntensity / 3}, ${blueIntensity})`; // Adjust green/blue mix
+
+            // Draw the bar. Starts from bottom (canvas height) and goes upwards.
+            canvasCtx.fillRect(
+                x,                          // Horizontal position
+                visualizerCanvas.height - barHeight, // Vertical start (bottom minus height)
+                barWidth,                   // Bar width
+                barHeight                   // Bar height
+            );
+
+            // Move to the position for the next bar (including spacing).
+            x += barWidth + 1; // Add 1 for spacing between bars
         }
-        canvasCtx.lineTo(visualizerCanvas.width, visualizerCanvas.height / 2);
-        canvasCtx.stroke();
-    }
+    } // End of inner draw function
+    // Start the animation loop.
     draw();
-}
+} // End of drawVisualizer
 
 // === Start Initialization ===
 initialize();

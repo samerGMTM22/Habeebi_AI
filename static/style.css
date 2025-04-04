@@ -1,0 +1,168 @@
+/* === Global Resets & Base Styles === */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    background-color: #121212; /* Dark background */
+    color: #e0e0e0; /* Light text */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    line-height: 1.6;
+}
+
+/* === Main Container === */
+.container {
+    background-color: #1e1e1e; /* Slightly lighter dark shade */
+    padding: 30px 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    width: 100%;
+    max-width: 600px; /* Max width for larger screens */
+    display: flex;
+    flex-direction: column;
+    gap: 25px; /* Spacing between elements */
+}
+
+h1 {
+    color: #ffffff;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+/* === Status Display === */
+#status {
+    min-height: 2em; /* Ensure space even when empty */
+    font-size: 1.1em;
+    color: #bbbbbb;
+    font-style: italic;
+}
+
+/* === Controls Area === */
+.controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+label {
+    font-weight: 500;
+    color: #cccccc;
+}
+
+select {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background-color: #333;
+    color: #e0e0e0;
+    font-size: 1em;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+select:focus {
+    outline: none;
+    border-color: #007aff; /* Highlight color */
+}
+
+/* === Buttons === */
+button {
+    padding: 12px 25px;
+    font-size: 1.1em;
+    font-weight: 500;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    color: #ffffff;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#recordButton {
+    background-color: #007aff; /* Primary action color (e.g., blue) */
+    min-width: 150px; /* Ensure minimum width */
+}
+
+#recordButton:not(:disabled):hover {
+    background-color: #005ecb;
+}
+
+#recordButton:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+#refreshButton {
+    background-color: #555; /* Secondary action color */
+    font-size: 0.9em; /* Slightly smaller */
+    padding: 8px 15px;
+}
+
+#refreshButton:not(:disabled):hover {
+    background-color: #666;
+}
+
+#refreshButton:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+#stopButton {
+    background-color: #dc3545; /* Red color for stop/cancel */
+    /* display: none; - Removed to make button always visible */
+}
+
+#stopButton:not(:disabled):hover {
+    background-color: #c82333;
+}
+
+#stopButton:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+
+/* === Visualizer Canvas === */
+#visualizer {
+    width: 100%; /* Make canvas responsive */
+    height: 60px; /* Fixed height */
+    background-color: #2a2a2a; /* Darker background for canvas */
+    border-radius: 6px;
+    display: block; /* Remove extra space below canvas */
+    margin-top: 15px;
+}
+
+/* === Responsive Adjustments === */
+@media (max-width: 480px) {
+    .container {
+        padding: 20px;
+    }
+
+    h1 {
+        font-size: 1.5em;
+    }
+
+    .controls {
+        flex-direction: column; /* Stack controls vertically */
+        gap: 10px;
+    }
+
+    button {
+        width: 100%; /* Make buttons full width */
+    }
+
+    #recordButton {
+        padding: 15px; /* Larger tap target */
+    }
+}
