@@ -4,39 +4,91 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Habeebi Voice Assistant</title>
-    <!-- Use direct path for static files in FastAPI -->
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <!-- Link to custom styles -->
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Socket.IO client removed, using native WebSocket API -->
+    <script>
+        // Tailwind configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-primary': '#00A9FF', // Bright blue accent
+                        'brand-secondary': '#374151', // Darker gray
+                        'brand-stop': '#EF4444', // Red
+                        'brand-stop-hover': '#DC2626',
+                        'brand-bg': '#111827', // Deep dark blue-gray background
+                        'brand-surface': '#1F2937', // Slightly lighter surface
+                        'brand-text-primary': '#F9FAFB', // Light text
+                        'brand-text-secondary': '#9CA3AF', // Muted text
+                        'orb-start': '#6a11cb', // Gradient start from example
+                        'orb-end': '#2575fc',   // Gradient end from example
+                    },
+                    boxShadow: {
+                         'orb-glow': '0 0 40px 5px rgba(101, 78, 235, 0.5)', // Enhanced glow
+                    },
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <div class="container">
-        <h1>Habeebi Voice Assistant</h1>
-        <div id="status">Connecting to server...</div> <!-- Updated initial status -->
+<body class="bg-brand-bg text-brand-text-primary flex flex-col items-center justify-center min-h-screen p-4 font-sans">
 
-        <div class="controls">
-            <label for="voiceSelect">Voice:</label>
-            <select id="voiceSelect">
-                <option value="alloy" selected>Alloy</option>
-                <option value="echo">Echo</option>
-                <option value="fable">Fable</option>
-                <option value="onyx">Onyx</option>
-                <option value="nova">Nova</option>
-                <option value="shimmer">Shimmer</option>
+    <div class="container flex flex-col items-center gap-4 w-full max-w-md">
+
+        <h1 class="text-4xl font-bold text-brand-text-primary mb-4">Habeebi</h1>
+
+        <!-- Status Display -->
+        <div id="status" class="text-brand-text-secondary text-center min-h-[1.5em] text-lg italic mb-4">Connecting to server...</div>
+
+        <!-- Voice Selector -->
+        <div class="controls w-full max-w-xs mb-6">
+            <label for="voiceSelect" class="sr-only">Voice:</label>
+            <select id="voiceSelect" class="w-full bg-brand-secondary border border-gray-600 text-brand-text-primary rounded-lg focus:ring-brand-primary focus:border-brand-primary block p-2.5 transition duration-150 ease-in-out">
+                <option value="alloy" selected>Alloy Voice</option>
+                <option value="echo">Echo Voice</option>
+                <option value="fable">Fable Voice</option>
+                <option value="onyx">Onyx Voice</option>
+                <option value="nova">Nova Voice</option>
+                <option value="shimmer">Shimmer Voice</option>
             </select>
         </div>
 
-        <button id="recordButton" disabled>Hold to Speak</button>
-        <button id="stopButton" title="Stop Agent">Stop Agent</button> <!-- Renamed and made visible -->
-        <button id="refreshButton" title="Refresh Zapier Actions" disabled>Refresh Zapier</button> <!-- Initially disabled -->
+        <!-- Central Interaction Orb -->
+        <div class="interaction-orb relative flex justify-center items-center w-64 h-64 md:w-72 md:h-72 mb-6">
+            <!-- Pulsing Waves (via CSS) -->
+            <div class="wave"></div>
+            <div class="wave"></div>
 
-        <!-- Placeholder for potential audio visualization -->
-        <canvas id="visualizer" width="300" height="50" style="border:1px solid #ccc; margin-top: 10px;"></canvas> <!-- Added basic style -->
+            <!-- Main Action Button -->
+            <button id="recordButton"
+                    class="absolute z-10 w-3/5 h-3/5 bg-gradient-to-br from-orb-start to-orb-end text-white font-semibold rounded-full shadow-lg hover:shadow-orb-glow focus:outline-none focus:ring-4 focus:ring-orb-end focus:ring-opacity-50 transition-all duration-300 ease-in-out transform active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg disabled:bg-gradient-to-br disabled:from-gray-600 disabled:to-gray-800 flex items-center justify-center text-center text-lg px-4"
+                    disabled>
+                Hold to Speak
+            </button>
 
-        <!-- Audio playback will be handled dynamically in JS -->
+             <!-- Visualizer Canvas (Positioned behind button or around it via CSS) -->
+             <canvas id="visualizer" width="300" height="60" class="absolute w-full h-full opacity-60"></canvas>
+        </div>
+
+
+        <!-- Secondary Action Buttons -->
+        <div class="flex gap-4 w-full max-w-xs justify-center mt-4">
+             <button id="stopButton" title="Stop Agent"
+                    class="flex-1 bg-brand-stop text-white font-medium py-2 px-4 rounded-lg shadow-sm hover:bg-brand-stop-hover focus:outline-none focus:ring-2 focus:ring-brand-stop focus:ring-opacity-50 transition duration-150 ease-in-out transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                Stop
+            </button>
+            <button id="refreshButton" title="Refresh Zapier Actions"
+                    class="flex-1 bg-brand-secondary text-brand-text-primary font-medium py-2 px-4 rounded-lg shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition duration-150 ease-in-out transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                Refresh Zapier
+            </button>
+        </div>
 
     </div>
 
-    <!-- Use direct path for static files in FastAPI -->
+    <!-- Link to unchanged JavaScript logic -->
     <script src="/static/script.js"></script>
 </body>
 </html>

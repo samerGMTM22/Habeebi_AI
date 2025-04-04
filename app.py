@@ -4,10 +4,12 @@ import asyncio
 import os
 import io
 import json
+import secrets # Added for secure password comparison
 # Third-party library imports
 import numpy as np
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status # Added Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials # Added security imports
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -39,7 +41,12 @@ templates = Jinja2Templates(directory="templates")
 # --- Global Configuration ---
 ZAPIER_MCP_URL = os.getenv("ZAPIER_MCP_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+APP_USERNAME = os.getenv("APP_USERNAME", "admin") # Added username env var with default
+APP_PASSWORD = os.getenv("APP_PASSWORD", "default_password") # Added password env var with default
 SAMPLE_RATE = 24000
+
+# --- Security Setup ---
+security = HTTPBasic()
 
 # --- Global State Variables ---
 zapier_server = None
@@ -132,19 +139,41 @@ async def refresh_zapier_and_agent():
         print("---------------------------------------------")
         return agent_initialized
 
+# === Authentication Dependency ===
+async def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
+    """Dependency to verify HTTP Basic credentials."""
+    correct_username = secrets.compare_digest(credentials.username, APP_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, APP_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
 # === FastAPI Routes ===
+# Apply authentication dependency to the main page route
 @app.get("/", response_class=HTMLResponse)
-async def get_index(request: Request):
-    """Serves the main HTML page using Jinja2 templates."""
+async def get_index(request: Request, username: str = Depends(authenticate_user)):
+    """Serves the main HTML page using Jinja2 templates after authentication."""
+    print(f"Authenticated access to / by user: {username}") # Optional logging
     return templates.TemplateResponse("index.html", {"request": request})
 
 # === WebSocket Endpoint ===
+# Note: Standard dependencies don't work directly on WebSockets before connection.
+# We'll handle authentication check *after* accepting, or ideally via query params/headers if needed.
+# For simplicity with Basic Auth prompt, we protect the HTML page serving the JS.
+# If direct WS protection is needed without loading the page first, a different auth method (e.g., tokens) is better.
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Handles WebSocket connections, receives audio/commands, streams responses."""
+    # Authentication is implicitly handled by protecting the page that loads this WebSocket.
+    # If a client tries to connect directly without loading the page (and thus authenticating),
+    # they wouldn't have the necessary JS. Add explicit check if needed.
     await websocket.accept()
     client_id = f"{websocket.client.host}:{websocket.client.port}"
-    print(f"WebSocket connection accepted from {client_id}")
+    print(f"WebSocket connection accepted from {client_id}") # Assumes prior auth via '/'
 
     # Flag to signal stopping the current agent response stream
     stop_current_request = False

@@ -318,13 +318,14 @@ async function startRecording() {
         };
 
         mediaRecorder.onstop = async () => {
+            document.body.classList.remove('is-recording'); // Remove class when recording stops
             statusDiv.textContent = 'Processing...';
-            disconnectVisualizer();
+            disconnectVisualizer(); // Disconnect analyser before processing
 
             if (localAudioChunks.length === 0) {
                 console.warn("No audio data recorded.");
                 statusDiv.textContent = 'Ready. (No audio recorded).';
-                recordButton.disabled = false;
+                recordButton.disabled = false; // Re-enable button
                 return;
             }
 
@@ -343,33 +344,40 @@ async function startRecording() {
             localAudioChunks = [];
         };
 
-        mediaRecorder.start(100);
+        mediaRecorder.start(100); // Trigger ondataavailable every 100ms
         statusDiv.textContent = 'Recording... Release to send.';
-        recordButton.disabled = true;
+        recordButton.disabled = true; // Disable button while recording
+        document.body.classList.add('is-recording'); // Add class for CSS animations
 
     } catch (err) {
         console.error("Error accessing microphone:", err);
         statusDiv.textContent = `Error: ${err.message}. Check mic permissions.`;
-        disconnectVisualizer();
+        document.body.classList.remove('is-recording'); // Remove class on error
+        disconnectVisualizer(); // Ensure visualizer disconnects on error
     }
 }
 
 function stopRecording() {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-        recordButton.disabled = false;
-        if (micStream) {
-            micStream.getTracks().forEach(track => track.stop());
-            micStream = null;
-        }
+        mediaRecorder.stop(); // This will trigger the 'onstop' handler above
+        // Button enabling and class removal are handled in 'onstop' now
     }
+     // Ensure class is removed if stopRecording is called unexpectedly (e.g., mouseleave)
+     document.body.classList.remove('is-recording');
+     // Re-enable button immediately on mouse up/leave, before processing
+     recordButton.disabled = false;
+     // Stop mic tracks immediately
+     if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
+     }
 }
 
 // === Event Listeners ===
 function setupEventListeners() {
     recordButton.addEventListener('mousedown', startRecording);
     recordButton.addEventListener('mouseup', stopRecording);
-    recordButton.addEventListener('mouseleave', stopRecording);
+    recordButton.addEventListener('mouseleave', stopRecording); // Also stop if mouse leaves button
 
     // Add event listener for the stop button
     stopButton.addEventListener('click', stopAgentAndPlayback); // Updated function call
@@ -397,13 +405,14 @@ async function connectVisualizer(stream) {
     if (!await ensureAudioContext() || !stream) return;
     if (!analyser) {
          analyser = audioContext.createAnalyser();
-         analyser.fftSize = 2048;
+         // Lower FFT size for fewer, thicker radial bars
+         analyser.fftSize = 512;
     }
     try {
         sourceNode = audioContext.createMediaStreamSource(stream);
         sourceNode.connect(analyser);
         console.log("Visualizer connected to mic stream.");
-        if (!visualizerDrawing) drawVisualizer();
+        if (!visualizerDrawing) drawVisualizer(); // Start drawing loop
     } catch (error) {
         console.error("Error connecting visualizer:", error);
     }
@@ -411,76 +420,73 @@ async function connectVisualizer(stream) {
 
 function disconnectVisualizer() {
      if (sourceNode) {
-        sourceNode.disconnect();
+        sourceNode.disconnect(); // Disconnect analyser node
         sourceNode = null;
         console.log("Visualizer disconnected.");
     }
-     canvasCtx.fillStyle = 'rgb(240, 240, 240)';
-     canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+     // Clear the canvas transparently
+     canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
 }
 
 let visualizerDrawing = false; // Flag to prevent multiple animation frame loops
 
-// Draws frequency bars visualization
+// Draws radial frequency bars visualization
 function drawVisualizer() {
-    // Ensure analyser exists and the loop isn't already running.
     if (!analyser || visualizerDrawing) return;
-    visualizerDrawing = true; // Set flag to indicate loop is active.
+    visualizerDrawing = true;
 
-    // Get the analyser's configuration.
-    // analyser.fftSize = 256; // Smaller FFT size for fewer, wider bars (optional)
-    const bufferLength = analyser.frequencyBinCount; // Number of data points (half of fftSize).
-    // Create an array to hold the frequency data.
+    const bufferLength = analyser.frequencyBinCount; // analyser.fftSize / 2
     const dataArray = new Uint8Array(bufferLength);
 
-    // --- Animation Loop ---
-    function draw() {
-        // Stop the loop if the source node has been disconnected.
-        if (!sourceNode) {
-             visualizerDrawing = false; // Reset flag.
-             // Clear canvas one last time
-             canvasCtx.fillStyle = 'rgb(42, 42, 42)'; // Match canvas background
-             canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-             return;
-        }
-        // Request the next frame for animation.
-        requestAnimationFrame(draw);
+    const centerX = visualizerCanvas.width / 2;
+    const centerY = visualizerCanvas.height / 2;
+    // Max radius slightly smaller than half the canvas width to avoid touching edges
+    const maxRadius = Math.min(centerX, centerY) * 0.8;
+    const barWidth = (Math.PI * 2) / bufferLength; // Angle width for each bar
 
-        // Get the current frequency data from the analyser.
+    function draw() {
+        if (!sourceNode) { // Check if disconnected
+            visualizerDrawing = false;
+            canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height); // Final clear
+            return;
+        }
+        requestAnimationFrame(draw);
         analyser.getByteFrequencyData(dataArray);
 
-        // --- Drawing on Canvas ---
-        // Clear the canvas with the background color.
-        canvasCtx.fillStyle = '#2a2a2a'; // Match canvas background from CSS
-        canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+        // Clear canvas transparently
+        canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
 
-        const barWidth = (visualizerCanvas.width / bufferLength) * 1.5; // Width of each bar (adjust multiplier for spacing)
-        let barHeight;
-        let x = 0; // Current horizontal position.
+        canvasCtx.save(); // Save context state
+        canvasCtx.translate(centerX, centerY); // Move origin to center
 
-        // Iterate through the frequency data points.
         for (let i = 0; i < bufferLength; i++) {
-            // Scale the data point (0-255) to the canvas height.
-            barHeight = dataArray[i] * (visualizerCanvas.height / 255); // Scale to canvas height
+            // Scale bar height (0-255) to the maxRadius
+            // Use a non-linear scale (e.g., sqrt) to emphasize lower frequencies more
+            const barHeight = (Math.sqrt(dataArray[i] / 255) * maxRadius);
+            // const barHeight = (dataArray[i] / 255) * maxRadius; // Linear scale
 
-            // Set the color for the bars (e.g., a blue gradient based on height)
-            const blueIntensity = Math.min(255, barHeight * 2); // More intense blue for taller bars
-            canvasCtx.fillStyle = `rgb(0, ${150 + blueIntensity / 3}, ${blueIntensity})`; // Adjust green/blue mix
+            // Calculate angle for the current bar
+            const angle = i * barWidth;
 
-            // Draw the bar. Starts from bottom (canvas height) and goes upwards.
-            canvasCtx.fillRect(
-                x,                          // Horizontal position
-                visualizerCanvas.height - barHeight, // Vertical start (bottom minus height)
-                barWidth,                   // Bar width
-                barHeight                   // Bar height
-            );
+            // --- Draw the radial bar ---
+            canvasCtx.rotate(barWidth); // Rotate for each bar
 
-            // Move to the position for the next bar (including spacing).
-            x += barWidth + 1; // Add 1 for spacing between bars
+            // Set color (e.g., using HSL based on brand primary and height/intensity)
+            const intensity = dataArray[i] / 255; // 0 to 1
+            const lightness = Math.min(90, 30 + intensity * 60); // Vary lightness (30% to 90%)
+            // Use brand primary hue (199) or orb start hue (~270)
+            canvasCtx.fillStyle = `hsl(199, 100%, ${lightness}%)`;
+            // canvasCtx.fillStyle = `hsl(271, 76%, ${lightness}%)`; // Purple orb color
+
+            // Draw the bar extending outwards from near the center
+            const innerRadius = maxRadius * 0.1; // Small inner gap
+            if (barHeight > 0) { // Only draw if there's volume
+                 canvasCtx.fillRect(innerRadius, -1, barHeight, 2); // Draw bar radially (width 2px)
+            }
         }
-    } // End of inner draw function
-    // Start the animation loop.
-    draw();
+        canvasCtx.restore(); // Restore context state (origin)
+    }
+    draw(); // Start the loop
 } // End of drawVisualizer
 
 // === Start Initialization ===

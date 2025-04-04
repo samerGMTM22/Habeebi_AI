@@ -1,168 +1,79 @@
-/* === Global Resets & Base Styles === */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+/* Custom styles for the voice assistant UI */
+
+/* Interaction Orb Container */
+.interaction-orb {
+  /* Using Tailwind for size, relative positioning */
+  /* Add a subtle background or keep it transparent */
 }
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    background-color: #121212; /* Dark background */
-    color: #e0e0e0; /* Light text */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 20px;
-    line-height: 1.6;
+/* Pulsing Waves */
+.wave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* Use the orb gradient colors with transparency */
+  background-color: rgba(106, 17, 203, 0.15); /* orb-start with alpha */
+  box-shadow: 0 0 20px rgba(37, 117, 252, 0.3); /* orb-end glow */
+  animation: pulseWave 2.5s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  /* Ensure waves are behind the button (z-index 0) */
+  z-index: 0;
 }
 
-/* === Main Container === */
-.container {
-    background-color: #1e1e1e; /* Slightly lighter dark shade */
-    padding: 30px 40px;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    text-align: center;
-    width: 100%;
-    max-width: 600px; /* Max width for larger screens */
-    display: flex;
-    flex-direction: column;
-    gap: 25px; /* Spacing between elements */
+/* Stagger the animation for the second wave */
+.wave:nth-child(2) {
+  animation-delay: -1.25s; /* Half of the duration */
 }
 
-h1 {
-    color: #ffffff;
-    margin-bottom: 10px;
-    font-weight: 600;
+/* Keyframes for the pulsing wave animation */
+@keyframes pulseWave {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.6); /* Expand further */
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6); /* Hold the final scale */
+    opacity: 0;
+  }
 }
 
-/* === Status Display === */
-#status {
-    min-height: 2em; /* Ensure space even when empty */
-    font-size: 1.1em;
-    color: #bbbbbb;
-    font-style: italic;
-}
-
-/* === Controls Area === */
-.controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 15px;
-}
-
-label {
-    font-weight: 500;
-    color: #cccccc;
-}
-
-select {
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid #444;
-    background-color: #333;
-    color: #e0e0e0;
-    font-size: 1em;
-    cursor: pointer;
-    transition: border-color 0.2s ease;
-}
-
-select:focus {
-    outline: none;
-    border-color: #007aff; /* Highlight color */
-}
-
-/* === Buttons === */
-button {
-    padding: 12px 25px;
-    font-size: 1.1em;
-    font-weight: 500;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
-    color: #ffffff;
-}
-
-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-#recordButton {
-    background-color: #007aff; /* Primary action color (e.g., blue) */
-    min-width: 150px; /* Ensure minimum width */
-}
-
-#recordButton:not(:disabled):hover {
-    background-color: #005ecb;
-}
-
-#recordButton:not(:disabled):active {
-    transform: scale(0.97);
-}
-
-#refreshButton {
-    background-color: #555; /* Secondary action color */
-    font-size: 0.9em; /* Slightly smaller */
-    padding: 8px 15px;
-}
-
-#refreshButton:not(:disabled):hover {
-    background-color: #666;
-}
-
-#refreshButton:not(:disabled):active {
-    transform: scale(0.97);
-}
-
-#stopButton {
-    background-color: #dc3545; /* Red color for stop/cancel */
-    /* display: none; - Removed to make button always visible */
-}
-
-#stopButton:not(:disabled):hover {
-    background-color: #c82333;
-}
-
-#stopButton:not(:disabled):active {
-    transform: scale(0.97);
-}
-
-
-/* === Visualizer Canvas === */
+/* Style the canvas visualizer */
 #visualizer {
-    width: 100%; /* Make canvas responsive */
-    height: 60px; /* Fixed height */
-    background-color: #2a2a2a; /* Darker background for canvas */
-    border-radius: 6px;
-    display: block; /* Remove extra space below canvas */
-    margin-top: 15px;
+  /* Positioned absolutely by Tailwind */
+  /* Ensure it's behind the button but above the waves */
+  z-index: 5;
+  border-radius: 50%; /* Make canvas circular if desired */
+  /* Mix-blend-mode can create interesting effects, optional */
+  /* mix-blend-mode: screen; */
+  pointer-events: none; /* Make sure it doesn't block the button */
 }
 
-/* === Responsive Adjustments === */
-@media (max-width: 480px) {
-    .container {
-        padding: 20px;
-    }
+/* Style adjustments for the record button (Tailwind handles most) */
+#recordButton {
+   /* Tailwind handles gradient, shadow, transitions */
+   /* Ensure it's above waves and canvas */
+   z-index: 10;
+}
 
-    h1 {
-        font-size: 1.5em;
-    }
+/* Add a state for when recording is active (requires JS to add/remove class) */
+body.is-recording .interaction-orb .wave {
+    animation-duration: 1s; /* Faster pulse when recording */
+    background-color: rgba(0, 169, 255, 0.25); /* Use primary color */
+    box-shadow: 0 0 30px rgba(0, 169, 255, 0.5);
+}
 
-    .controls {
-        flex-direction: column; /* Stack controls vertically */
-        gap: 10px;
-    }
+body.is-recording #recordButton {
+    /* Example: Make button pulse slightly or change gradient */
+    animation: pulseButton 1s infinite ease-in-out;
+}
 
-    button {
-        width: 100%; /* Make buttons full width */
-    }
-
-    #recordButton {
-        padding: 15px; /* Larger tap target */
-    }
+@keyframes pulseButton {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
 }
