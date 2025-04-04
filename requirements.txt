@@ -4,5 +4,7 @@ python-dotenv
 numpy
 pydub
 websockets
-openai[datalib]>=1.0.0 # Try main package with datalib extra
+openai>=1.0.0
+openai-agents
+openai-agents[voice] # Explicitly add base and voice extra
 jinja2
