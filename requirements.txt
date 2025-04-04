@@ -5,4 +5,5 @@ numpy
 pydub
 websockets
 openai>=1.0.0
+openai-agents # Add specific agents package
 jinja2
