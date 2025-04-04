@@ -1,209 +1,214 @@
+# === Imports ===
+# Standard library imports
 import asyncio
 import os
-from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, Response
-import numpy as np
-# import sounddevice as sd # Not needed for Flask playback
 import io
-import wave
+import json
+# Third-party library imports
+import numpy as np
+from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydub import AudioSegment
+import websockets # Ensure websockets library is available
 
-# Import Agent SDK components
-from agents import Agent, Runner, WebSearchTool
+# OpenAI Agents SDK imports
+from agents import Agent, Runner, WebSearchTool, trace
 from agents.voice import (
     VoicePipeline,
     SingleAgentVoiceWorkflow,
     AudioInput,
     VoiceStreamEventAudio,
     VoiceStreamEventLifecycle,
-    # Import config classes
-    VoicePipelineConfig,
     TTSModelSettings,
-    STTModelSettings # May need this too
+    VoicePipelineConfig
 )
 from agents.mcp import MCPServerSse
-# Import provider if needed for config
-from agents.voice.models.openai_model_provider import OpenAIVoiceModelProvider
 
-
+# === Initialization ===
 load_dotenv()
 
-# --- Flask App Setup ---
-app = Flask(__name__)
+# --- FastAPI App Setup ---
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# --- Global Agent Configuration ---
+# --- Global Configuration ---
 ZAPIER_MCP_URL = os.getenv("ZAPIER_MCP_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SAMPLE_RATE = 24000
 
-# --- Agent and Zapier Initialization ---
-# Agent and Zapier server can be initialized once globally
+# --- Global State Variables ---
 zapier_server = None
-habeebi_agent = None # Define globally
+habeebi_agent = None
+agent_initialized = False
+agent_lock = asyncio.Lock()
 
-# Moved pipeline initialization inside the request handler
-
-async def initialize_agent_components():
-    """Initializes Agent and Connects to Zapier."""
-    global zapier_server, habeebi_agent
-
-    # Initialize Zapier only once
-    if ZAPIER_MCP_URL and not zapier_server:
-        print(f"Configuring Zapier MCP server...")
-        zapier_server = MCPServerSse(params={"url": ZAPIER_MCP_URL}, name="ZapierServer")
-        print("Connecting to Zapier MCP server...")
-        try:
-            await zapier_server.connect()
-            print("Zapier MCP Server Connected.")
-        except Exception as e:
-            print(f"Error connecting to Zapier MCP server: {e}. Proceeding without Zapier.")
-            zapier_server = None
-
-    # Initialize Agent only once
-    if not habeebi_agent:
-        mcp_servers_list = [zapier_server] if zapier_server else []
-        habeebi_agent = Agent(
-            name="Habeebi",
-            instructions=(
-                "You are Habeebi, a helpful assistant. Use web search for current info. "
-                "Use Zapier actions for tasks. Keep responses concise for voice."
-            ),
-            tools=[WebSearchTool()],
-            mcp_servers=mcp_servers_list,
-            model="gpt-4o-mini"
-        )
-        print("Habeebi Agent Initialized.")
-
+# === Agent Initialization and Refresh Logic (Async) ===
 async def cleanup_zapier():
-    """Cleans up Zapier connection."""
+    """(Async) Cleans up the existing Zapier MCP server connection if it exists."""
+    global zapier_server
     if zapier_server:
-        print("Cleaning up Zapier MCP server connection...")
+        print("Cleaning up Zapier MCP server connection (async)...")
         try:
             await zapier_server.cleanup()
-            print("Zapier MCP Cleanup Complete.")
+            print("Zapier MCP Cleanup Complete (async).")
+            zapier_server = None
         except Exception as e:
-            print(f"Error cleaning up Zapier server: {e}")
+            print(f"Error cleaning up Zapier server (async): {e}")
 
+async def refresh_zapier_and_agent():
+    """(Async) Cleans up existing connection, reconnects to Zapier, and re-initializes the Agent."""
+    async with agent_lock:
+        global zapier_server, habeebi_agent, agent_initialized
+        print("--- Refreshing Zapier Connection and Agent (async) ---")
+        await cleanup_zapier()
 
-# --- Flask Routes ---
-
-@app.route('/')
-def index():
-    """Serves the main HTML page."""
-    return render_template('index.html')
-
-@app.route('/process-voice', methods=['POST'])
-async def process_voice():
-    """Receives audio, processes it using pydub, returns MP3 audio response."""
-    if not OPENAI_API_KEY:
-        return jsonify({"error": "Server not configured: OPENAI_API_KEY missing"}), 500
-
-    if not habeebi_agent:
-        await initialize_agent_components()
-        if not habeebi_agent:
-             return jsonify({"error": "Agent failed to initialize"}), 500
-
-    audio_blob = request.files.get('audio_data')
-    selected_voice = request.form.get('voice', 'alloy')
-
-    if not audio_blob:
-        return jsonify({"error": "No audio data received"}), 400
-
-    print(f"Received audio data, processing with voice: {selected_voice}...")
-
-    # --- Process Audio Blob using pydub (Same as before) ---
-    try:
-        audio_bytes_io = io.BytesIO()
-        audio_blob.save(audio_bytes_io)
-        audio_bytes_io.seek(0)
-        audio_segment = AudioSegment.from_file(audio_bytes_io)
-        audio_segment = audio_segment.set_channels(1)
-        audio_segment = audio_segment.set_sample_width(2) # 16-bit
-        if audio_segment.frame_rate != SAMPLE_RATE:
-             print(f"Resampling audio from {audio_segment.frame_rate} Hz to {SAMPLE_RATE} Hz")
-             audio_segment = audio_segment.set_frame_rate(SAMPLE_RATE)
-        # Don't need pcm_data_bytes or recorded_buffer here if exporting directly
-        print(f"Pydub processed audio duration: {len(audio_segment) / 1000.0} seconds")
-        # Create AudioInput from the processed segment's raw data for the agent pipeline
-        # Important: Need the raw PCM data for the *pipeline input*
-        pcm_data_bytes_for_input = audio_segment.raw_data
-        recorded_buffer_for_input = np.frombuffer(pcm_data_bytes_for_input, dtype=np.int16)
-        audio_input = AudioInput(buffer=recorded_buffer_for_input, frame_rate=SAMPLE_RATE)
-        print(f"Audio successfully processed for agent input.")
-
-    except Exception as e:
-        if "ffmpeg" in str(e).lower() or "audiosegment" in str(e).lower():
-             print(f"*** Error during pydub/ffmpeg processing: {e} ***")
-             return jsonify({"error": f"Audio processing library error: {e}"}), 500
+        # Connect to Zapier MCP Server
+        if ZAPIER_MCP_URL:
+            print(f"Configuring Zapier MCP server (async)...")
+            new_zapier_server = MCPServerSse(params={"url": ZAPIER_MCP_URL}, name="ZapierServer")
+            print("Connecting to Zapier MCP server (async)...")
+            try:
+                await new_zapier_server.connect()
+                zapier_server = new_zapier_server
+                print("Zapier MCP Server Connected (async).")
+            except Exception as e:
+                print(f"Error connecting to Zapier MCP server during refresh (async): {e}. Proceeding without Zapier.")
+                zapier_server = None
         else:
-            print(f"Error processing received audio: {e}")
-            return jsonify({"error": f"Failed to process audio file: {e}"}), 400
-    # --- End Process Audio Blob ---
+            zapier_server = None
 
-    # --- Initialize Pipeline for this request and Run ---
+        # Initialize the Agent
+        mcp_servers_list = [zapier_server] if zapier_server else []
+        print("Re-initializing Habeebi Agent (async)...")
+        try:
+            habeebi_agent = Agent(
+                name="HabeebiFastAPI",
+                instructions=(
+                    "You are Habeebi, a helpful voice assistant. Use web search for current info. "
+                    "Use Zapier actions for tasks. Keep responses concise, friendly, and natural-sounding for voice output. "
+                    "Avoid overly technical jargon."
+                ),
+                tools=[WebSearchTool()],
+                mcp_servers=mcp_servers_list,
+                model="gpt-4o-mini"
+            )
+            agent_initialized = True
+            print("Habeebi Voice Agent Initialized/Refreshed (async).")
+        except Exception as e:
+            habeebi_agent = None
+            agent_initialized = False
+            print(f"Error initializing agent: {e}")
+
+        print("---------------------------------------------")
+        return agent_initialized
+
+# === FastAPI Routes ===
+@app.get("/", response_class=HTMLResponse)
+async def get_index(request: Request):
+    """Serves the main HTML page using Jinja2 templates."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# === WebSocket Endpoint ===
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handles WebSocket connections, receives audio/commands, streams responses."""
+    await websocket.accept()
+    client_id = f"{websocket.client.host}:{websocket.client.port}"
+    print(f"WebSocket connection accepted from {client_id}")
+
+    # Initial Agent Check
+    global agent_initialized
+    if not agent_initialized:
+        print("Agent not initialized, performing initial refresh...")
+        initialized = await refresh_zapier_and_agent()
+        status_msg = {"type": "status", "message": "Agent ready"} if initialized else {"type": "error", "message": "Agent initialization failed"}
+        await websocket.send_json(status_msg)
+    else:
+         await websocket.send_json({"type": "status", "message": "Agent ready"})
+
+    # Main WebSocket Loop
     try:
-        tts_settings = TTSModelSettings(voice=selected_voice)
-        pipeline_config = VoicePipelineConfig(tts_settings=tts_settings)
-        pipeline_for_request = VoicePipeline(
-            workflow=SingleAgentVoiceWorkflow(agent=habeebi_agent),
-            config=pipeline_config
-        )
-        print(f"Initialized pipeline for request with voice: {pipeline_for_request.config.tts_settings.voice}")
+        while True:
+            data = await websocket.receive() # Handles bytes or text
 
-        result = await pipeline_for_request.run(audio_input=audio_input)
+            # Handle Binary Data (Audio)
+            if "bytes" in data:
+                audio_blob_bytes = data["bytes"]
+                selected_voice = "alloy" # TODO: Get from client if needed
+                print(f"Received audio bytes ({len(audio_blob_bytes)}) from {client_id}")
 
-        # --- MODIFICATION START: Collect Bytes and Export as MP3 ---
-        all_audio_bytes = bytearray()
-        print("Collecting audio response bytes...")
-        async for event in result.stream():
-            if event.type == "voice_stream_event_audio" and event.data is not None:
-                all_audio_bytes.extend(event.data.tobytes())
-            elif event.type == "voice_stream_event_lifecycle":
-                print(f"[Lifecycle Event: {event.event}]")
-            elif event.type == "voice_stream_event_error":
-                print(f"[Error Event: {event.error}]")
+                if not agent_initialized or not habeebi_agent:
+                    await websocket.send_json({"type": "error", "message": "Agent not ready"})
+                    continue
 
-        print(f"Collected {len(all_audio_bytes)} bytes of raw PCM audio data.")
+                # Process Received Audio Blob
+                try:
+                    audio_bytes_io = io.BytesIO(audio_blob_bytes)
+                    audio_segment = AudioSegment.from_file(audio_bytes_io)
+                    audio_segment = audio_segment.set_channels(1).set_sample_width(2)
+                    if audio_segment.frame_rate != SAMPLE_RATE:
+                        audio_segment = audio_segment.set_frame_rate(SAMPLE_RATE)
+                    pcm_data_bytes_for_input = audio_segment.raw_data
+                    recorded_buffer_for_input = np.frombuffer(pcm_data_bytes_for_input, dtype=np.int16)
+                    audio_input = AudioInput(buffer=recorded_buffer_for_input, frame_rate=SAMPLE_RATE)
+                    print(f"Audio successfully processed for agent input for {client_id}.")
+                except Exception as e:
+                    await websocket.send_json({"type": "error", "message": f"Failed to process audio: {e}"})
+                    continue
 
-        if not all_audio_bytes:
-             print("Warning: No audio data was generated by the pipeline.")
-             return Response(b'', mimetype='audio/mpeg') # Send empty MP3
+                # Initialize Voice Pipeline and Stream Response
+                try:
+                    tts_settings = TTSModelSettings(voice=selected_voice)
+                    pipeline_config = VoicePipelineConfig(tts_settings=tts_settings)
+                    pipeline_for_request = VoicePipeline(
+                        workflow=SingleAgentVoiceWorkflow(agent=habeebi_agent),
+                        config=pipeline_config
+                    )
+                    print(f"Initialized pipeline for request with voice: {selected_voice} for {client_id}")
 
-        # Create a pydub segment from the raw PCM data
-        response_segment = AudioSegment(
-            data=bytes(all_audio_bytes),
-            sample_width=2, # 16-bit
-            frame_rate=SAMPLE_RATE,
-            channels=1
-        )
+                    with trace(f"Habeebi FastAPI Voice Assistant - {client_id}"):
+                        result = await pipeline_for_request.run(audio_input=audio_input)
+                        print(f"Streaming audio response chunks for {client_id}...")
+                        async for event in result.stream():
+                            if isinstance(event, VoiceStreamEventAudio) and event.data is not None:
+                                await websocket.send_bytes(event.data.tobytes())
+                            elif isinstance(event, VoiceStreamEventLifecycle):
+                                print(f"[Lifecycle Event for {client_id}: {event.event}]")
+                        print(f"Finished streaming audio response for {client_id}.")
+                        await websocket.send_json({"type": "audio_stream_end"})
+                except Exception as e:
+                    print(f"An error occurred during voice pipeline processing for {client_id}: {e}")
+                    import traceback; traceback.print_exc()
+                    await websocket.send_json({"type": "error", "message": f"Agent processing failed: {e}"})
 
-        # Export the segment to MP3 format in memory
-        mp3_buffer = io.BytesIO()
-        response_segment.export(mp3_buffer, format="mp3", bitrate="192k") # Export as MP3
-        mp3_buffer.seek(0)
-        final_mp3_bytes = mp3_buffer.read()
-        print(f"Converted to MP3 format ({len(final_mp3_bytes)} bytes).")
+            # Handle Text Data (Commands)
+            elif "text" in data:
+                 message_text = data["text"]
+                 print(f"Received text message from {client_id}: {message_text}")
+                 try:
+                     command_data = json.loads(message_text)
+                     if command_data.get("command") == "refresh_zapier":
+                         await websocket.send_json({"type": "status", "message": "Zapier refresh started..."})
+                         initialized = await refresh_zapier_and_agent()
+                         status = "success" if initialized else "failed"
+                         await websocket.send_json({"type": "zapier_refreshed", "status": status})
+                     # Add other command handling here if needed
+                     else:
+                          print(f"Unknown command received: {command_data.get('command')}")
+                 except Exception as e:
+                     print(f"Error processing command from {client_id}: {e}")
+                     await websocket.send_json({"type": "error", "message": "Failed to process command"})
 
-        # Return collected MP3 bytes in a single Flask response
-        print("Sending complete MP3 audio response to frontend.")
-        return Response(final_mp3_bytes, mimetype='audio/mpeg') # Use audio/mpeg for MP3
-        # --- MODIFICATION END ---
-
+    except WebSocketDisconnect:
+        print(f"WebSocket connection closed for {client_id}")
     except Exception as e:
-        print(f"An error occurred during voice pipeline processing: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"Agent processing failed: {e}"}), 500
-    # --- End Initialize and Run Pipeline ---
+        print(f"WebSocket Error for {client_id}: {e}")
+        try: await websocket.close()
+        except RuntimeError: pass
 
-# --- Main Execution and Cleanup ---
-if __name__ == '__main__':
-    # Initialize components that need an event loop
-    asyncio.run(initialize_agent_components())
-
-    # Register cleanup function for when Flask exits (more reliable than after app.run)
-    import atexit
-    atexit.register(lambda: asyncio.run(cleanup_zapier()))
-
-    # Start Flask development server
-    app.run(debug=True, port=5000)
+# === Server Execution ===
+# Run with: uvicorn app:app --host 0.0.0.0 --port 5001 --reload

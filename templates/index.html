@@ -4,29 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Habeebi Voice Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Use direct path for static files in FastAPI -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Socket.IO client removed, using native WebSocket API -->
 </head>
 <body>
-    <h1>Habeebi</h1>
-    <div id="status">Ready. Press and hold the button to speak.</div>
+    <div class="container">
+        <h1>Habeebi Voice Assistant</h1>
+        <div id="status">Connecting to server...</div> <!-- Updated initial status -->
 
-    <button id="recordButton">Hold to Speak</button>
+        <div class="controls">
+            <label for="voiceSelect">Voice:</label>
+            <select id="voiceSelect">
+                <option value="alloy" selected>Alloy</option>
+                <option value="echo">Echo</option>
+                <option value="fable">Fable</option>
+                <option value="onyx">Onyx</option>
+                <option value="nova">Nova</option>
+                <option value="shimmer">Shimmer</option>
+            </select>
+        </div>
 
-    <div>
-        <label for="voiceSelect">Agent Voice:</label>
-        <select id="voiceSelect">
-            <option value="alloy" selected>Alloy</option>
-            <option value="ash">Ash</option>
-            <option value="coral">Coral</option>
-            <option value="echo">Echo</option>
-            <option value="fable">Fable</option>
-            <option value="onyx">Onyx</option>
-            <option value="nova">Nova</option>
-            <option value="sage">Sage</option>
-            <option value="shimmer">Shimmer</option>
-        </select>
+        <button id="recordButton" disabled>Hold to Speak</button>
+
+        <button id="refreshButton" title="Refresh Zapier Actions" disabled>Refresh Zapier</button> <!-- Initially disabled -->
+
+        <!-- Placeholder for potential audio visualization -->
+        <canvas id="visualizer" width="300" height="50" style="border:1px solid #ccc; margin-top: 10px;"></canvas> <!-- Added basic style -->
+
+        <!-- Audio playback will be handled dynamically in JS -->
+
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- Use direct path for static files in FastAPI -->
+    <script src="/static/script.js"></script>
 </body>
 </html>
