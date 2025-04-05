@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+numpy
+pydub
+websockets
+openai>=1.0.0
+openai-agents[voice]
+jinja2

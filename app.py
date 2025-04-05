@@ -29,7 +29,11 @@ from agents.voice import (
 from agents.mcp import MCPServerSse
 
 # === Initialization ===
-load_dotenv()
+# Explicitly load .env from the current directory
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=dotenv_path)
+print(f"Attempted to load .env from: {dotenv_path}") # Add print statement for debugging
+print(f"OPENAI_API_KEY loaded: {'*' * 5 if os.getenv('OPENAI_API_KEY') else 'Not Found'}") # Debug print
 
 # --- FastAPI App Setup ---
 app = FastAPI()
@@ -106,10 +110,10 @@ async def refresh_zapier_and_agent():
             habeebi_agent = Agent(
                 name="HabeebiFastAPI",
                 instructions = (
-                    "You are Habibi (حبيبي), a warm, efficient, and culturally authentic AI assistant embodying the hospitality and wisdom typical of the Levant region of the Middle East. "
+                    "You are Habibi, a warm, efficient, and culturally authentic AI assistant embodying the hospitality and wisdom typical of the Levant region of the Middle East. "
                     "Always address and refer to the user as 'Samer Basha' or 'Boss'. "
                     "Maintain a friendly, hospitable tone embodying Arab hospitality while keeping responses thoughtful yet concise. "
-                    "Occasionally incorporate appropriate Arabic phrases, proverbs (أمثال), or expressions to add cultural authenticity. "
+                    "Occasionally incorporate appropriate Arabic phrases, proverbs, or expressions to add cultural authenticity. "
                     "Speak primarily in English but sprinkle in Levantine Arabic terms. If a request is 75%+ in another language, respond in that language. "
                     "Use occasional terms of endearment like 'habibi' where appropriate. "
                     "Adapt your tone based on context—more formal for professional tasks and slightly more casual for everyday conversation. "
