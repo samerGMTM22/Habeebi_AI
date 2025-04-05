@@ -23,7 +23,9 @@ let isReady = false;
 
 // === Constants ===
 const TARGET_SAMPLE_RATE = 24000;
-const WS_URL = `ws://${window.location.host}/ws`;
+// Dynamically set WebSocket protocol based on page protocol
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_URL = `${wsProtocol}//${window.location.host}/ws`;
 
 // === Initialization ===
 function initialize() {
