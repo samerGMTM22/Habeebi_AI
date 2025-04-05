@@ -301,3 +301,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # === Server Execution ===
 # Run with: uvicorn app:app --host 0.0.0.0 --port 5001 --reload
+
+# Add standard entry point (though Azure uses the Startup Command)
+if __name__ == "__main__":
+    import uvicorn
+    # Use port 8000 consistent with Azure config, host 0.0.0.0
+    uvicorn.run(app, host="0.0.0.0", port=8000)
